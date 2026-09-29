@@ -33,7 +33,9 @@ def _scoped_engines(db: Session, op: M.Operator):
     q = db.query(M.Engine).filter(M.Engine.active == True).order_by(M.Engine.tail_number)  # noqa: E712
     allowed = A.allowed_tails(db, op)
     if allowed is not None:
-        q = q.filter(M.Engine.tail_number.in_(allowed or {"\0"}))
+        if not allowed:
+            return []          # no drones assigned -> nothing to show (never send a NUL string to PostgreSQL)
+        q = q.filter(M.Engine.tail_number.in_(allowed))
     return q.all()
 
 

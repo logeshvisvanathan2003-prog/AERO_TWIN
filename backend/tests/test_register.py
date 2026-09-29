@@ -23,6 +23,11 @@ def test_portals_and_registration():
         assert r.status_code == 200, r.text
         o = r.json()["operator"]
         assert o["role"] == "operator" and o["login_id"] == "OPR-77" and o["drones"] == [] and o["token"]
+        # a brand-new operator has no drones: the data endpoints must answer cleanly (this was a 500 on PostgreSQL)
+        oh = {"authorization": f"Bearer {o['token']}"}
+        assert c.get("/api/fleet", headers=oh).json() == []
+        assert c.get("/api/alerts", headers=oh).status_code == 200
+        assert c.get("/api/state", headers=oh).status_code == 404
         # duplicate / weak / bad id
         assert c.post("/api/auth/register/operator", json=OP).status_code == 409
         assert c.post("/api/auth/register/operator", json={**OP, "login_id": "x2", "password": "short"}).status_code == 400
