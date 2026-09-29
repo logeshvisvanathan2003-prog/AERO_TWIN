@@ -27,8 +27,8 @@ const TWIN_VIEWS = ['overview', 'health', 'diagnostics', 'predictive', 'simulati
 const hashView = () => location.hash.replace(/^#\/?/, '').split('?')[0];
 
 export default function App() {
-  const { operator, login, changePassword, logout } = useAuth();
-  if (!operator) return <Login onLogin={login} />;
+  const { operator, login, register, changePassword, logout } = useAuth();
+  if (!operator) return <Login onLogin={login} onRegister={register} />;
   if (operator.must_change_password) return <ChangePassword operator={operator} onChange={changePassword} onLogout={logout} />;
   return <Shell operator={operator} onLogout={logout} />;
 }

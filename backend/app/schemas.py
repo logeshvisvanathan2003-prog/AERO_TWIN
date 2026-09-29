@@ -28,6 +28,21 @@ class MissionSimRequest(BaseModel):
 class LoginRequest(BaseModel):
     login_id: str
     password: str
+    portal: Optional[str] = None       # "operator" | "admin" -> the account's role must match the portal used
+
+
+class RegisterRequest(BaseModel):
+    login_id: str = Field(max_length=48)
+    full_name: str = Field(max_length=120)
+    password: str = Field(max_length=128)
+    designation: str = Field("", max_length=80)
+    squadron: str = Field("", max_length=64)
+    email: str = Field("", max_length=160)
+    phone: str = Field("", max_length=32)
+
+
+class AdminRegisterRequest(RegisterRequest):
+    registration_key: str = Field(max_length=200)
 
 
 class ChangePasswordRequest(BaseModel):

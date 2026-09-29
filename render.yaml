@@ -20,6 +20,8 @@ services:
         generateValue: true
       - key: ADMIN_PASSWORD        # first-login password for ADMIN (change is forced)
         sync: false
+      - key: ADMIN_REGISTRATION_KEY   # secret invite key for the "Register as Administrator" form (leave unset to disable)
+        sync: false
       - key: SEED_DEMO_DRONES
         value: "true"
       - key: PERSIST_EVERY_N_FRAMES

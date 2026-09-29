@@ -31,6 +31,13 @@ ADMIN_LOGIN_ID = os.getenv("ADMIN_LOGIN_ID", "ADMIN").strip().upper()
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "Admin@12345")
 ADMIN_NAME = os.getenv("ADMIN_NAME", "DRDO System Administrator")
 
+# Self-registration.
+#  * Operators may register themselves (they get NO drones until an admin assigns some).
+#  * Admin registration is only possible with this secret invite key. Empty => admin
+#    registration is DISABLED. Set it in the Render dashboard, share it only with real admins.
+ADMIN_REGISTRATION_KEY = os.getenv("ADMIN_REGISTRATION_KEY", "").strip()
+REGISTER_MAX_PER_HOUR = int(os.getenv("REGISTER_MAX_PER_HOUR", "10"))     # per IP
+
 # CORS: comma separated list of allowed frontend origins ("*" for local dev).
 CORS_ORIGINS = [o.strip().rstrip("/") for o in os.getenv("CORS_ORIGINS", "*").split(",") if o.strip()]
 

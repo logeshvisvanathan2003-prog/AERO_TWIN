@@ -1,0 +1,19 @@
+/* Login / Register portal (operator + administrator) */
+.auth-portal-label { font-size: 11px; letter-spacing: .12em; color: var(--faint); margin-bottom: 8px; }
+.auth-portals { margin-bottom: 16px; }
+.auth-portals .login-role-card { font-family: inherit; }
+.auth-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.auth-grid .full { grid-column: 1 / -1; }
+.login-screen { align-items: flex-start; }        /* tall register forms scroll instead of clipping the top */
+.login-shell { margin: auto; }
+.auth-note { font-size: 11.5px; color: var(--muted); line-height: 1.5; background: var(--panel-2);
+  border: 1px solid var(--line); border-radius: 7px; padding: 9px 11px; }
+.auth-note.warn { border-color: var(--warn); color: var(--warn); }
+.auth-ok { background: #0b1b14; border: 1px solid #1f6a4a; color: var(--accent); font-size: 12px; padding: 9px 11px; border-radius: 7px; }
+.auth-switch { text-align: center; font-size: 12.5px; color: var(--muted); margin-top: 4px; }
+.auth-switch button { background: none; border: none; color: var(--accent); cursor: pointer; font-weight: 700; padding: 0; font-size: inherit; }
+.auth-switch.admin button { color: var(--warn); }
+.login-submit.admin { background: var(--warn); border-color: var(--warn); color: #241a00; }
+.login-submit.admin:hover { background: #ffc043; }
+.login-form select { border: 1px solid var(--line); border-radius: 7px; padding: 10px 12px; background: var(--panel-2); color: var(--text); }
+@media (max-width: 520px) { .auth-grid { grid-template-columns: 1fr; } }

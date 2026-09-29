@@ -39,8 +39,16 @@ export function useAuth() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [operator?.token]);
 
-  const login = useCallback(async (login_id, password) => {
-    const r = await api.login({ login_id, password });
+  // portal = 'operator' | 'admin' : the backend rejects an account that belongs to the other portal
+  const login = useCallback(async (login_id, password, portal) => {
+    const r = await api.login({ login_id, password, portal });
+    persist(r.operator);
+    return r.operator;
+  }, [persist]);
+
+  // role = 'operator' | 'admin' (admin needs payload.registration_key)
+  const register = useCallback(async (role, payload) => {
+    const r = role === 'admin' ? await api.registerAdmin(payload) : await api.registerOperator(payload);
     persist(r.operator);
     return r.operator;
   }, [persist]);
@@ -57,5 +65,5 @@ export function useAuth() {
     location.hash = '';
   }, [persist]);
 
-  return { operator, login, changePassword, logout };
+  return { operator, login, register, changePassword, logout };
 }

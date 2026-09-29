@@ -48,6 +48,8 @@ export const api = {
 
   // auth
   login: (b) => j('/api/auth/login', { method: 'POST', body: body(b), noAuthRedirect: true }),
+  registerOperator: (b) => j('/api/auth/register/operator', { method: 'POST', body: body(b), noAuthRedirect: true }),
+  registerAdmin: (b) => j('/api/auth/register/admin', { method: 'POST', body: body(b), noAuthRedirect: true }),
   logout: () => j('/api/auth/logout', { method: 'POST', noAuthRedirect: true }),
   me: () => j('/api/auth/me'),
   changePassword: (b) => j('/api/auth/change-password', { method: 'POST', body: body(b), noAuthRedirect: true }),
