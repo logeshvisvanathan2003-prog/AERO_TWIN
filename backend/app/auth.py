@@ -1,215 +1,157 @@
-"""Sign-in (operator / admin portals), self-registration, sign-out, password change, WebSocket tickets."""
+"""
+AeroTwin-DT :: authentication & role-based access control
+==============================================================================
+* Accounts are created by an admin only (there is NO public registration).
+* Passwords: salted PBKDF2-HMAC-SHA256.
+* Sessions: stateless HMAC-signed bearer tokens with expiry. Each token carries
+  the account's `token_version`; bumping it (password reset, disable, delete)
+  revokes every outstanding token immediately.
+* Every request re-loads the account, so a disabled account or a changed drone
+  assignment takes effect on the very next call.
+* Roles
+    admin     full control: users, drones, fleet orders, twin commands, all data
+    operator  read-only view of *assigned* drones, may acknowledge their alerts,
+              generate their reports and run non-mutating mission feasibility checks
+"""
 from __future__ import annotations
-
+import base64
+import hashlib
 import hmac
+import json
 import re
 import secrets
 import time
-from typing import Dict, List, Tuple
+from typing import Optional, Set
 
-from fastapi import APIRouter, Depends, Request
-from fastapi.responses import JSONResponse
+from fastapi import Depends, Header, HTTPException
 from sqlalchemy.orm import Session
 
-from .. import auth as A
-from .. import config as C
-from .. import models_db as M
-from ..db import get_db
-from ..notify import notify
-from ..schemas import AdminRegisterRequest, ChangePasswordRequest, LoginRequest, RegisterRequest
+from . import config as C
+from . import models_db as M
+from .db import get_db
 
-router = APIRouter(prefix="/api/auth", tags=["auth"])
-
-# one-time 60 s tickets so the JWT never has to travel in a WebSocket URL
-WS_TICKETS: Dict[str, Tuple[int, float]] = {}
-
-ID_RE = re.compile(r"^[A-Z0-9][A-Z0-9._-]{1,47}$")
-PORTAL_NAME = {"admin": "Administrator", "operator": "Operator"}
-
-# tiny in-memory per-IP throttle for the public registration endpoints
-_HITS: Dict[str, List[float]] = {}
+PBKDF2_ITERS = 200_000
 
 
-def _client_ip(request: Request) -> str:
-    fwd = request.headers.get("x-forwarded-for")
-    if fwd:
-        return fwd.split(",")[0].strip()[:64]
-    return (request.client.host if request.client else "unknown")[:64]
+# ------------------------------------------------------------------ passwords
+def hash_password(password: str, salt: Optional[str] = None) -> tuple[str, str]:
+    salt = salt or secrets.token_hex(12)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), PBKDF2_ITERS).hex()
+    return digest, salt
 
 
-def _throttled(bucket: str, ip: str, limit: int, window: int = 3600, record: bool = True) -> bool:
-    """True when this IP already used up `limit` hits inside `window` seconds (records a hit unless record=False)."""
-    now = time.time()
-    key = f"{bucket}:{ip}"
-    hits = [t for t in _HITS.get(key, []) if now - t < window]
-    if len(hits) >= limit:
-        _HITS[key] = hits
-        return True
-    if record:
-        hits.append(now)
-    _HITS[key] = hits
-    if len(_HITS) > 5000:                                  # keep memory bounded
-        for k in [k for k, v in _HITS.items() if not v or now - v[-1] > window]:
-            _HITS.pop(k, None)
-    return False
+def verify_password(password: str, salt: str, digest: str) -> bool:
+    check, _ = hash_password(password, salt)
+    return hmac.compare_digest(check, digest)
 
 
-def _dummy_verify(password: str) -> None:
-    A.hash_password(password, "0" * 24)          # equalise timing for unknown IDs
+def password_problem(pw: str) -> Optional[str]:
+    if len(pw or "") < 8:
+        return "Password must be at least 8 characters."
+    if not re.search(r"[A-Za-z]", pw) or not re.search(r"\d", pw):
+        return "Password must contain both letters and digits."
+    return None
 
 
-def _bad(msg: str, code: int = 400) -> JSONResponse:
-    return JSONResponse({"ok": False, "error": msg}, status_code=code)
+def generate_temp_password() -> str:
+    alphabet = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    core = "".join(secrets.choice(alphabet) for _ in range(9))
+    return f"{core}{secrets.randbelow(90) + 10}"      # always letters + digits
 
 
-# ------------------------------------------------------------------- sign-in
-@router.post("/login")
-def login(req: LoginRequest, db: Session = Depends(get_db)):
-    login_id = req.login_id.strip().upper()
-    op = db.query(M.Operator).filter(M.Operator.login_id == login_id).first()
-    bad = JSONResponse({"ok": False, "error": "Invalid login ID or password."}, status_code=401)
-
-    if not op:
-        _dummy_verify(req.password)
-        notify(db, "SECURITY", "warn", f"Failed sign-in for unknown ID '{login_id[:40]}'", "", actor=login_id[:40], commit=True)
-        return bad
-    if op.locked_until and op.locked_until > M.now():
-        mins = int((op.locked_until - M.now()).total_seconds() // 60) + 1
-        return JSONResponse({"ok": False, "error": f"Account temporarily locked. Try again in {mins} min."}, status_code=423)
-    if not op.active:
-        return JSONResponse({"ok": False, "error": "This account has been disabled. Contact your administrator."}, status_code=403)
-
-    if not A.verify_password(req.password, op.password_salt, op.password_hash):
-        op.failed_attempts = (op.failed_attempts or 0) + 1
-        if op.failed_attempts >= C.MAX_FAILED_LOGINS:
-            import datetime as dt
-            op.locked_until = M.now() + dt.timedelta(minutes=C.LOCKOUT_MINUTES)
-            op.failed_attempts = 0
-            notify(db, "SECURITY", "alarm", f"Account {op.login_id} locked after repeated failed sign-ins",
-                   f"Locked for {C.LOCKOUT_MINUTES} minutes.", actor=op.login_id)
-        db.commit()
-        return bad
-
-    # correct password, but wrong portal (operator using the admin page or vice-versa)
-    if req.portal in PORTAL_NAME and op.role != req.portal:
-        right = PORTAL_NAME.get(op.role, "Operator")
-        return JSONResponse({"ok": False, "error": f"This is an {right} account. Please use the {right} sign-in page."}, status_code=403)
-
-    op.failed_attempts = 0
-    op.locked_until = None
-    op.last_login = M.now()
-    db.commit()
-    return {"ok": True, "operator": A.public_profile(op, A.make_token(op))}
+# --------------------------------------------------------------------- tokens
+def _b64(b: bytes) -> str:
+    return base64.urlsafe_b64encode(b).rstrip(b"=").decode()
 
 
-# ------------------------------------------------------------- registration
-def _validate_new_account(req: RegisterRequest, db: Session):
-    """Shared checks. Returns (login_id, error_response | None)."""
-    login_id = req.login_id.strip().upper()
-    if not ID_RE.match(login_id):
-        return login_id, _bad("Login ID must be 2-48 chars: letters, digits, dot, dash or underscore.")
-    if not req.full_name.strip():
-        return login_id, _bad("Full name is required.")
-    problem = A.password_problem(req.password)
-    if problem:
-        return login_id, _bad(problem)
-    if db.query(M.Operator).filter(M.Operator.login_id == login_id).first():
-        return login_id, _bad("That login ID is already taken.", 409)
-    return login_id, None
+def _unb64(s: str) -> bytes:
+    return base64.urlsafe_b64decode(s + "=" * (-len(s) % 4))
 
 
-def _create_account(req: RegisterRequest, login_id: str, role: str, db: Session) -> M.Operator:
-    digest, salt = A.hash_password(req.password)
-    is_admin = role == "admin"
-    op = M.Operator(
-        login_id=login_id, full_name=req.full_name.strip(),
-        designation=req.designation.strip() or ("Administrator" if is_admin else "UAV Operator"),
-        squadron=req.squadron.strip() or ("DRDO HQ" if is_admin else "1 UAV Squadron"),
-        email=req.email.strip(), phone=req.phone.strip(), role=role,
-        password_hash=digest, password_salt=salt,
-        must_change_password=False,                     # they just chose their own password
-        created_by="self-registration",
-    )
-    db.add(op)
+def _sign(body: str) -> str:
+    return _b64(hmac.new(C.SECRET_KEY.encode(), body.encode(), hashlib.sha256).digest())
+
+
+def make_token(op: M.Operator) -> str:
+    payload = {"sub": op.id, "tv": op.token_version, "exp": int(time.time() + C.TOKEN_TTL_HOURS * 3600)}
+    body = _b64(json.dumps(payload, separators=(",", ":")).encode())
+    return f"{body}.{_sign(body)}"
+
+
+def parse_token(token: str) -> Optional[dict]:
+    try:
+        body, sig = token.split(".", 1)
+        if not hmac.compare_digest(sig, _sign(body)):
+            return None
+        payload = json.loads(_unb64(body))
+        if payload["exp"] < time.time():
+            return None
+        return payload
+    except Exception:
+        return None
+
+
+def user_from_authorization(db: Session, authorization: Optional[str]) -> Optional[M.Operator]:
+    if not authorization or not authorization.lower().startswith("bearer "):
+        return None
+    payload = parse_token(authorization.split(" ", 1)[1].strip())
+    if not payload:
+        return None
+    op = db.get(M.Operator, payload["sub"])
+    if not op or not op.active or op.token_version != payload["tv"]:
+        return None
     return op
 
 
-@router.post("/register/operator")
-def register_operator(req: RegisterRequest, request: Request, db: Session = Depends(get_db)):
-    ip = _client_ip(request)
-    if _throttled("register", ip, C.REGISTER_MAX_PER_HOUR):
-        return _bad("Too many registration attempts. Please try again later.", 429)
-    login_id, problem = _validate_new_account(req, db)
-    if problem:
-        return problem
-    op = _create_account(req, login_id, "operator", db)      # no drones: an admin must assign them
-    op.last_login = M.now()
-    notify(db, "USER", "info", f"New operator self-registered: {login_id}",
-           f"{req.full_name.strip()} \u2014 no drones assigned yet. Assign drones under Operators.", actor=login_id)
-    db.commit()
-    db.refresh(op)
-    return {"ok": True, "operator": A.public_profile(op, A.make_token(op))}
+# ---------------------------------------------------------------- dependencies
+def current_user(authorization: Optional[str] = Header(default=None), db: Session = Depends(get_db)) -> M.Operator:
+    op = user_from_authorization(db, authorization)
+    if not op:
+        raise HTTPException(status_code=401, detail="Sign in required")
+    return op
 
 
-@router.post("/register/admin")
-def register_admin(req: AdminRegisterRequest, request: Request, db: Session = Depends(get_db)):
-    ip = _client_ip(request)
-    if not C.ADMIN_REGISTRATION_KEY:
-        return _bad("Administrator registration is disabled on this server.", 403)
-    if _throttled("admin-key-fail", ip, 5, record=False):          # 5 wrong keys / hour / IP, then locked out
-        return _bad("Too many failed attempts. Please try again later.", 429)
-    if _throttled("admin-register", ip, C.REGISTER_MAX_PER_HOUR):
-        return _bad("Too many registration attempts. Please try again later.", 429)
-    if not hmac.compare_digest(req.registration_key.strip().encode(), C.ADMIN_REGISTRATION_KEY.encode()):
-        _throttled("admin-key-fail", ip, 5)                        # count this failure
-        notify(db, "SECURITY", "alarm", "Administrator registration attempted with a WRONG key",
-               f"Requested ID '{req.login_id.strip().upper()[:40]}' from IP {ip}.", actor=req.login_id.strip().upper()[:40], commit=True)
-        return _bad("Invalid administrator registration key.", 403)
-    login_id, problem = _validate_new_account(req, db)
-    if problem:
-        return problem
-    op = _create_account(req, login_id, "admin", db)
-    op.last_login = M.now()
-    notify(db, "SECURITY", "warn", f"New ADMINISTRATOR account registered: {login_id}",
-           f"{req.full_name.strip()} registered with the admin key from IP {ip}. Disable it under Operators if unexpected.", actor=login_id)
-    db.commit()
-    db.refresh(op)
-    return {"ok": True, "operator": A.public_profile(op, A.make_token(op))}
+def active_user(op: M.Operator = Depends(current_user)) -> M.Operator:
+    """Like current_user, but blocks accounts that still owe a password change."""
+    if op.must_change_password:
+        raise HTTPException(status_code=403, detail="Password change required before continuing")
+    return op
 
 
-# ------------------------------------------------------------------ session
-@router.post("/logout")
-def logout():
-    return {"ok": True}       # tokens are stateless; the client discards its copy
+def admin_user(op: M.Operator = Depends(active_user)) -> M.Operator:
+    if op.role != "admin":
+        raise HTTPException(status_code=403, detail="Administrator access required")
+    return op
 
 
-@router.get("/me")
-def me(op: M.Operator = Depends(A.current_user)):
-    return {"ok": True, "operator": A.public_profile(op)}
+# ------------------------------------------------------------------ drone scope
+def allowed_tails(db: Session, op: M.Operator) -> Optional[Set[str]]:
+    """None => unrestricted (admin). Otherwise the set of tail numbers this operator may access."""
+    if op.role == "admin":
+        return None
+    return {d.tail_number for d in op.drones if d.active}
 
 
-@router.post("/change-password")
-def change_password(req: ChangePasswordRequest, op: M.Operator = Depends(A.current_user), db: Session = Depends(get_db)):
-    if not A.verify_password(req.current_password, op.password_salt, op.password_hash):
-        return JSONResponse({"ok": False, "error": "Current password is incorrect."}, status_code=400)
-    problem = A.password_problem(req.new_password)
-    if problem:
-        return JSONResponse({"ok": False, "error": problem}, status_code=400)
-    if req.new_password == req.current_password:
-        return JSONResponse({"ok": False, "error": "New password must differ from the current one."}, status_code=400)
-    op.password_hash, op.password_salt = A.hash_password(req.new_password)
-    op.must_change_password = False
-    op.token_version += 1                                # sign out every other session
-    notify(db, "SECURITY", "info", f"{op.login_id} changed their password", "", actor=op.login_id)
-    db.commit()
-    return {"ok": True, "operator": A.public_profile(op, A.make_token(op))}
+def require_tail(db: Session, op: M.Operator, tail: str) -> None:
+    allowed = allowed_tails(db, op)
+    if allowed is not None and tail not in allowed:
+        raise HTTPException(status_code=403, detail="You are not assigned to this drone")
 
 
-@router.post("/ws-ticket")
-def ws_ticket(op: M.Operator = Depends(A.active_user)):
-    now = time.time()
-    for k in [k for k, (_, exp) in WS_TICKETS.items() if exp < now]:
-        WS_TICKETS.pop(k, None)
-    t = secrets.token_urlsafe(24)
-    WS_TICKETS[t] = (op.id, now + 60)
-    return {"ticket": t}
+def public_profile(op: M.Operator, token: Optional[str] = None) -> dict:
+    out = {
+        "id": op.id,
+        "login_id": op.login_id,
+        "full_name": op.full_name,
+        "designation": op.designation,
+        "squadron": op.squadron,
+        "email": op.email,
+        "phone": op.phone,
+        "role": op.role,
+        "must_change_password": bool(op.must_change_password),
+        "last_login": M.iso(op.last_login),
+        "drones": sorted(d.tail_number for d in op.drones if d.active) if op.role != "admin" else ["*"],
+    }
+    if token:
+        out["token"] = token
+    return out
