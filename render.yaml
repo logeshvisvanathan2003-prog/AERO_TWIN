@@ -1,0 +1,26 @@
+# Render Blueprint — New > Blueprint > pick this repo.
+services:
+  - type: web
+    name: aerotwin-backend
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    # ONE worker only: the live twins run in-process and are streamed from memory.
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: DATABASE_URL          # paste your Neon connection string in the Render dashboard
+        sync: false
+      - key: CORS_ORIGINS          # your Vercel URL, e.g. https://aerotwin.vercel.app
+        sync: false
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ADMIN_PASSWORD        # first-login password for ADMIN (change is forced)
+        sync: false
+      - key: SEED_DEMO_DRONES
+        value: "true"
+      - key: PERSIST_EVERY_N_FRAMES
+        value: "60"

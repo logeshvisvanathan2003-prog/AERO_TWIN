@@ -1,0 +1,22 @@
+version: "3.9"
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment: { POSTGRES_USER: aerotwin, POSTGRES_PASSWORD: aerotwin, POSTGRES_DB: aerotwin }
+    ports: ["5432:5432"]
+    volumes: [aerotwin_pgdata:/var/lib/postgresql/data]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U aerotwin"], interval: 5s, timeout: 5s, retries: 10 }
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    depends_on: { db: { condition: service_healthy } }
+    environment:
+      DATABASE_URL: postgresql://aerotwin:aerotwin@db:5432/aerotwin
+      SECRET_KEY: local-dev-secret-change-me
+      ADMIN_PASSWORD: Admin@12345
+      CORS_ORIGINS: http://localhost:5173
+      SEED_DEMO_OPERATORS: "true"
+    ports: ["8000:8000"]
+volumes:
+  aerotwin_pgdata:
