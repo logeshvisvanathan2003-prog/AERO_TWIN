@@ -54,3 +54,34 @@ def ensure_demo(db: Session) -> None:
             db.add(op)
         db.commit()
         print("[bootstrap] demo operators OPR-01 / OPR-02 / OPR-04 created")
+
+
+def _upsert_jury(db: Session, login_id: str, password: str, role: str, name: str, designation: str):
+    op = db.query(M.Operator).filter(M.Operator.login_id == login_id).first()
+    digest, salt = A.hash_password(password)
+    created = op is None
+    if created:
+        op = M.Operator(login_id=login_id, role=role, created_by="system")
+        db.add(op)
+    op.full_name, op.designation, op.squadron = name, designation, "Jury Evaluation Panel"
+    op.role = role
+    op.active = True
+    op.password_hash, op.password_salt = digest, salt
+    op.must_change_password = False
+    op.failed_attempts = 0
+    op.locked_until = None
+    op.token_version = (op.token_version or 1) + 1 if not created else 1
+    return op, created
+
+
+def ensure_jury_accounts(db: Session) -> None:
+    """Demo mode: always-working evaluator logins (admin + operator)."""
+    if not C.DEMO_JURY:
+        return
+    _upsert_jury(db, C.JURY_ADMIN_ID, C.JURY_ADMIN_PASSWORD, "admin", "Jury Administrator", "Evaluator \u2014 admin view")
+    opr, created = _upsert_jury(db, C.JURY_OPERATOR_ID, C.JURY_OPERATOR_PASSWORD, "operator", "Jury Operator", "Evaluator \u2014 operator view")
+    if created:
+        drones = db.query(M.Engine).filter(M.Engine.active == True).order_by(M.Engine.tail_number).limit(3).all()  # noqa: E712
+        opr.drones = drones
+    db.commit()
+    print(f"[bootstrap] jury accounts ready: {C.JURY_ADMIN_ID} / {C.JURY_OPERATOR_ID} (DEMO_JURY=true)")

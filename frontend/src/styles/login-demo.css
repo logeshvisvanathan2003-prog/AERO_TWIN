@@ -1,0 +1,28 @@
+.jury-status { display: inline-flex; align-items: center; gap: 7px; font-size: 11px; font-family: var(--mono);
+  padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); align-self: flex-start; margin-bottom: 14px; }
+.jury-status .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); }
+.jury-status.up { color: var(--ok); border-color: #14532d; } .jury-status.up .dot { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+.jury-status.wait { color: var(--warn); border-color: #6a4b0f; } .jury-status.wait .dot { background: var(--warn); animation: juryPulse 1s infinite; }
+.jury-status.down { color: var(--crit); border-color: #6a1f26; } .jury-status.down .dot { background: var(--crit); }
+@keyframes juryPulse { 50% { opacity: .25; } }
+
+.jury-panel { border: 1px dashed var(--accent-dim); border-radius: 12px; padding: 14px; margin-bottom: 18px; background: rgba(0, 211, 167, .04); }
+.jury-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+.jury-head h3 { font-size: 12px; letter-spacing: .12em; color: var(--accent); margin: 0; font-weight: 700; }
+.jury-sub { font-size: 11.5px; color: var(--muted); margin-bottom: 12px; line-height: 1.45; }
+.jury-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.jury-card { text-align: left; background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 12px;
+  cursor: pointer; color: var(--text); font-family: var(--body); display: flex; flex-direction: column; gap: 6px; transition: border-color .15s, transform .15s; }
+.jury-card:hover:not(:disabled) { border-color: var(--accent); transform: translateY(-1px); }
+.jury-card:disabled { opacity: .55; cursor: default; }
+.jury-card .role { font-size: 10px; font-weight: 800; letter-spacing: .1em; }
+.jury-card.admin .role { color: var(--warn); } .jury-card.operator .role { color: var(--accent); }
+.jury-card .ttl { font-size: 14px; font-weight: 700; }
+.jury-card .desc { font-size: 11px; color: var(--muted); line-height: 1.4; min-height: 46px; }
+.jury-cred { font-family: var(--mono); font-size: 11px; background: #060b11; border: 1px solid var(--line); border-radius: 7px; padding: 6px 8px; color: var(--text); line-height: 1.6; }
+.jury-cred b { color: var(--faint); font-weight: 500; }
+.jury-go { margin-top: 2px; font-size: 12px; font-weight: 700; color: #04231d; background: var(--accent); border-radius: 7px; padding: 7px 10px; text-align: center; }
+.jury-card.admin .jury-go { background: var(--warn); color: #241a06; }
+.login-divider { display: flex; align-items: center; gap: 10px; color: var(--faint); font-size: 11px; margin: 2px 0 14px; letter-spacing: .1em; }
+.login-divider::before, .login-divider::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+@media (max-width: 520px) { .jury-cards { grid-template-columns: 1fr; } .jury-card .desc { min-height: 0; } }

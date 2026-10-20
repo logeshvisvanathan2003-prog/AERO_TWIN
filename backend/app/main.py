@@ -22,7 +22,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from . import config as C
 from . import models_db as M
-from .bootstrap import ensure_admin, ensure_demo
+from .bootstrap import ensure_admin, ensure_demo, ensure_jury_accounts
 from .db import Base, SessionLocal, engine as db_engine, DATABASE_URL
 from .persist import prune
 from .routes import admin as admin_routes
@@ -65,6 +65,7 @@ async def lifespan(_app: FastAPI):
     with SessionLocal() as db:
         ensure_admin(db)
         ensure_demo(db)
+        ensure_jury_accounts(db)
         sync_all(db)
     if C.SECRET_KEY_IS_EPHEMERAL:
         print("[security] SECRET_KEY not set — using a random key; sessions reset on every restart. Set SECRET_KEY in production.")
