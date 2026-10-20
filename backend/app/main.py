@@ -77,7 +77,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(title="AeroTwin-DT Backend", version="3.0.0", lifespan=lifespan)
 app.add_middleware(
-    CORSMiddleware, allow_origins=C.CORS_ORIGINS, allow_credentials=False,
+    CORSMiddleware, allow_origins=C.CORS_ORIGINS, allow_origin_regex=C.CORS_ORIGIN_REGEX or None, allow_credentials=False,
     allow_methods=["*"], allow_headers=["*"],
 )
 app.include_router(auth_routes.router)

@@ -40,6 +40,9 @@ REGISTER_MAX_PER_HOUR = int(os.getenv("REGISTER_MAX_PER_HOUR", "10"))     # per 
 
 # CORS: comma separated list of allowed frontend origins ("*" for local dev).
 CORS_ORIGINS = [o.strip().rstrip("/") for o in os.getenv("CORS_ORIGINS", "*").split(",") if o.strip()]
+# Extra allowed origins as a regex: the Vercel production alias AND every per-deployment / preview URL
+# (e.g. aero-twin-abc123-yourname-projects.vercel.app). Set CORS_ORIGIN_REGEX="" to switch it off.
+CORS_ORIGIN_REGEX = os.getenv("CORS_ORIGIN_REGEX", r"https://aero-twin[a-z0-9-]*\.vercel\.app")
 
 # Shared secret for the CAN edge-gateway ingest endpoint (empty => ingest disabled).
 INGEST_KEY = os.getenv("INGEST_KEY", "")

@@ -10,7 +10,6 @@ export default function Login({ onLogin }) {
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
-  const [note, setNote] = useState('');
   const [server, setServer] = useState('checking');
   const alive = useRef(true);
 
@@ -29,13 +28,12 @@ export default function Login({ onLogin }) {
 
   // retry only on network errors (server waking up); wrong passwords are not retried
   const attempt = useCallback(async (id, pw, who) => {
-    setErr(''); setNote(''); setBusy(who);
+    setErr(''); setBusy(who);
     try {
-      for (let i = 0; i < 9; i += 1) {
+      for (let i = 0; i < 14; i += 1) {
         try { await onLogin(id, pw); return; }
         catch (e) {
           if (e?.status) throw e;
-          setNote(`Waking the secure server\u2026 attempt ${i + 1}/9 (free hosting can take up to ~50 s)`);
           await sleep(5000);
         }
       }
@@ -43,14 +41,14 @@ export default function Login({ onLogin }) {
     } catch (e) {
       setErr(e.message || 'Sign-in failed.');
     } finally {
-      setBusy(false); setNote('');
+      setBusy(false);
     }
   }, [onLogin]);
 
   const submit = (e) => { e.preventDefault(); attempt(loginId, password, 'form'); };
   const quick = (acc) => { setLoginId(acc.loginId); setPassword(acc.password); attempt(acc.loginId, acc.password, acc.key); };
 
-  const statusText = { checking: 'Checking server\u2026', up: 'Server online', wait: 'Server waking up\u2026', down: 'Server unreachable' }[server];
+  const statusText = server === 'up' ? 'Server online' : 'Connecting to server\u2026';
 
   return (
     <div className="login-screen">
@@ -80,7 +78,7 @@ export default function Login({ onLogin }) {
         </div>
 
         <div className="login-formpane">
-          <div className={`jury-status ${server}`}><span className="dot" />{statusText}</div>
+          <div className={`jury-status ${server === 'up' ? 'up' : ''}`}><span className="dot" />{statusText}</div>
 
           {SHOW_DEMO_LOGINS && (
             <div className="jury-panel">
@@ -112,7 +110,6 @@ export default function Login({ onLogin }) {
               <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Enter your password" required autoComplete="current-password" />
             </label>
 
-            {note && <div className="login-hint tiny" style={{ color: 'var(--warn)' }}>{note}</div>}
             {err && <div className="login-err">{err}</div>}
 
             <button className="login-submit" type="submit" disabled={!!busy}>
