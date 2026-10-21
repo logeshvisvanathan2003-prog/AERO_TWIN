@@ -163,6 +163,7 @@ class DroneRuntime:
         self.mission_seq = mission_seq
         self.acc = MissionAcc(t0, self.scenario)
         self.last_ingest: Optional[float] = None
+        self.paused_at: Optional[float] = None
 
     # ---------------------------------------------------------- commands
     def apply_command(self, cmd: str, body: Dict[str, Any]) -> Dict[str, Any]:
@@ -192,10 +193,21 @@ class DroneRuntime:
                     self.manual[k] = float(body[k])
             return {"ok": True, "manual": self.manual}
         if cmd == "pause":
-            self.running = False; return {"ok": True}
+            self.running = False; self.paused_at = time.time(); self._mark_running(); return {"ok": True}
         if cmd == "resume":
-            self.running = True; return {"ok": True}
+            self.running = True; self.paused_at = None; self._mark_running(); return {"ok": True}
         return {"ok": False, "error": "unsupported command"}
+
+    def _mark_running(self) -> None:
+        """Reflect pause/resume in the cached frame so /api/state and new viewers see it at once."""
+        if self.last:
+            self.last = {**self.last, "sim_config": {**self.last.get("sim_config", {}), "running": self.running}}
+
+    def paused_frame(self) -> Optional[Dict[str, Any]]:
+        """Heartbeat sent while paused: same data, running=False (NOT stored in history)."""
+        if not self.last:
+            return None
+        return {**self.last, "ts": time.time(), "sim_config": {**self.last.get("sim_config", {}), "running": False}}
 
     # ------------------------------------------------------------ stepping
     def advance(self) -> Dict[str, Any]:

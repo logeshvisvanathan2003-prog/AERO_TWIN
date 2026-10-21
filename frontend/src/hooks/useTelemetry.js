@@ -44,6 +44,7 @@ export function useTelemetry(tail) {
           const f = JSON.parse(e.data);
           if (f.tail && f.tail !== tail) return;
           setFrame(f);
+          if (f.sim_config && f.sim_config.running === false) return;   // paused heartbeat: don't extend the charts
           buf.push(f);
           if (buf.length > 40) flush();
         } catch { /* ignore malformed frame */ }

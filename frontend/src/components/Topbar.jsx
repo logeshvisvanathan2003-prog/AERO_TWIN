@@ -52,8 +52,8 @@ export default function Topbar({ frame, linkState, drones, tail, onTail, onMenu,
         <div className="tstat"><span className="k">MISSION T</span><span className="v mono">{hhmmss(frame?.mission_t || 0)}</span></div>
         <div className="tstat"><span className="k">ENG HOURS</span><span className="v mono">{fmt(current?.engine_hours ?? 0, 1)}</span></div>
         <div className="tstat"><span className="k">LINK</span><span className="v mono">
-          {linkState === 'live' && <span className="live-dot" />}
-          {linkState === 'live' ? (frame?.source === 'live_can' ? 'CAN LIVE' : 'TWIN LIVE') : String(linkState).toUpperCase()}
+          {linkState === 'live' && running && <span className="live-dot" />}
+          {linkState === 'live' ? (frame?.source === 'live_can' ? 'CAN LIVE' : running ? 'TWIN LIVE' : 'TWIN PAUSED') : String(linkState).toUpperCase()}
         </span></div>
       </div>
 

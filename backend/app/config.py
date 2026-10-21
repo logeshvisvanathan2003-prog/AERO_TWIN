@@ -55,6 +55,8 @@ TELEMETRY_KEEP_PER_DRONE = int(os.getenv("TELEMETRY_KEEP_PER_DRONE", "2000"))
 NOTIFICATION_RETENTION_DAYS = int(os.getenv("NOTIFICATION_RETENTION_DAYS", "60"))
 MAX_LIVE_TWINS = int(os.getenv("MAX_LIVE_TWINS", "12"))
 DEFAULT_SPEED = float(os.getenv("DEFAULT_SPEED", "20"))
+# A paused twin freezes the view for EVERY viewer of that drone, so it resumes by itself after this many seconds.
+PAUSE_MAX_SECONDS = int(os.getenv("PAUSE_MAX_SECONDS", "300"))
 
 # --- seeding ---------------------------------------------------------------- #
 SEED_DEMO_DRONES = _bool("SEED_DEMO_DRONES", True)

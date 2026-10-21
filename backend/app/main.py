@@ -43,8 +43,16 @@ async def acquisition_loop():
     while True:
         t0 = time.perf_counter()
         for rt in list(REG.values()):
-            if rt.source != "simulated" or not rt.running:
+            if rt.source != "simulated":
                 continue
+            if not rt.running:
+                if rt.paused_at and time.time() - rt.paused_at > C.PAUSE_MAX_SECONDS:
+                    rt.apply_command("resume", {})          # safety: never leave every viewer frozen
+                else:
+                    pf = rt.paused_frame()
+                    if pf:
+                        await broadcast(rt, pf)
+                    continue
             try:
                 t_before = rt.t
                 frame = rt.advance()
