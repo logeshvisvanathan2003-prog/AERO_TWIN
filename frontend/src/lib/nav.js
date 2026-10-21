@@ -27,4 +27,4 @@ export const NAV = [
 
 export const ALL_VIEWS = NAV.flatMap((s) => s.items.map((i) => i[0]));
 export const canOpen = (view, role) => NAV.some((s) => s.items.some((i) => i[0] === view && i[3].includes(role)));
-export const defaultView = (role) => (role === 'admin' ? 'admin' : 'overview');
+export const defaultView = () => 'overview';   // everyone (admin included) lands on the live Overview first
